@@ -4,38 +4,8 @@
 
 <style>
 /* ===============================
-   FIX: Dropdown text visibility
+   Card and Input Styling (Dark Theme)
    =============================== */
-select, select option {
-    color: #0b0b0b !important;
-    background-color: #ffffff !important;
-}
-
-/* When options are highlighted */
-select option:checked,
-select option:active,
-select option:hover,
-select option:focus {
-    color: #0b0b0b !important;
-    background-color: #dbeeff !important;
-}
-
-/* Closed select appearance */
-select {
-    background-color: #1e1e1e;
-    color: #ffffff !important;
-    border: 1px solid #444;
-    padding: 0.5rem;
-    border-radius: 6px;
-}
-
-/* Focused select */
-select:focus {
-    outline: none;
-    border-color: #007bff;
-    background-color: #ffffff !important;
-    color: #0b0b0b !important;
-}
 
 /* Form styling */
 .card {
@@ -67,6 +37,53 @@ label {
     color: #cccccc;
 }
 
+/* ===============================
+   Upgraded: Segment Control Styling (For Role Selection)
+   =============================== */
+.segment-control {
+    display: flex;
+    border: 1px solid #444; /* Match card border color */
+    border-radius: 6px;
+    overflow: hidden; /* Important for border-radius */
+    margin-top: 0.3rem;
+}
+
+.segment-control input[type="radio"] {
+    display: none; /* Hide the actual radio button */
+}
+
+.segment-control label {
+    flex: 1;
+    text-align: center;
+    padding: 0.65rem 0.5rem;
+    cursor: pointer;
+    background-color: #121212; /* Default background (unselected) */
+    color: #cccccc; /* Default text color */
+    border-right: 1px solid #444; /* Separator */
+    margin-top: 0; /* Override existing label margin */
+    transition: background-color 0.2s, color 0.2s;
+    font-size: 0.9rem; /* Match other labels */
+}
+
+.segment-control label:last-child {
+    border-right: none; /* No separator on the last item */
+}
+
+/* Hover effect */
+.segment-control label:hover {
+    background-color: #2a2a2a;
+}
+
+/* Active/Selected State */
+.segment-control input[type="radio"]:checked + label {
+    background-color: #007bff; /* Primary selection color */
+    color: white; /* White text on active background */
+    font-weight: bold;
+}
+
+/* ===============================
+   Button Styling
+   =============================== */
 .btn-primary {
     margin-top: 1.5rem;
     padding: 0.75rem;
@@ -88,23 +105,21 @@ label {
 
     <form method="POST">
 
-        <!-- ROLE -->
-        <label for="role">Role</label>
-        <select id="role" name="role" required>
-            <option value="">-- Select Role --</option>
-            <option value="patient">Patient</option>
-            <option value="doctor">Doctor</option>
-        </select>
+        <label style="margin-bottom: 0.5rem;">Role</label>
+        <div class="segment-control">
+            <input type="radio" id="role-patient" name="role" value="patient" required>
+            <label for="role-patient">Patient</label>
 
-        <!-- NAME -->
+            <input type="radio" id="role-doctor" name="role" value="doctor" required>
+            <label for="role-doctor">Doctor</label>
+        </div>
+
         <label for="name">Full Name</label>
         <input type="text" id="name" name="name" required>
 
-        <!-- USERNAME -->
         <label for="username">Username</label>
         <input type="text" id="username" name="username" required>
 
-        <!-- PASSWORD -->
         <label for="password">Password</label>
         <input 
             type="password" 
@@ -123,25 +138,5 @@ label {
         <a href="/login" style="color: #00aaff;">Login here</a>
     </p>
 </div>
-
-<!-- JS fallback to ensure dropdown readability -->
-<script>
-function enforceSelectColors(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-
-    el.addEventListener('mousedown', () => {
-        el.style.backgroundColor = "#ffffff";
-        el.style.color = "#0b0b0b";
-    });
-
-    el.addEventListener('blur', () => {
-        el.style.backgroundColor = "#1e1e1e";
-        el.style.color = "#ffffff";
-    });
-}
-
-enforceSelectColors('role');
-</script>
 
 {% endblock %}
