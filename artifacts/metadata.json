@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-08 11:57:08",
+  "timestamp": "2025-11-05 13:52:07",
   "features": [
     "exudates_count",
     "hemorrhages_count",
@@ -10,20 +10,8 @@
     "hba1c",
     "diabetes_duration"
   ],
-  "image_features": [
-    "exudates_count",
-    "hemorrhages_count",
-    "microaneurysms_count",
-    "vessel_tortuosity",
-    "macular_thickness"
-  ],
-  "clinical_features": [
-    "fasting_glucose",
-    "hba1c",
-    "diabetes_duration"
-  ],
-  "clinical_scale_factor": 0.1,
   "threshold_grid": [
+    0.4,
     0.45,
     0.5,
     0.55,
@@ -32,20 +20,14 @@
   "ensemble_threshold": 0.5,
   "model_order": [
     "XGBoost",
-    "Random Forest",
-    "Logistic Regression",
     "LightGBM",
-    "KNN",
     "CatBoost"
   ],
   "model_filenames": {
     "XGBoost": "XGBoost.pkl",
-    "Random Forest": "Random_Forest.pkl",
-    "Logistic Regression": "Logistic_Regression.pkl",
     "LightGBM": "LightGBM.pkl",
-    "KNN": "KNN.pkl",
     "CatBoost": "CatBoost.pkl"
   },
   "random_state": 42,
-  "data_path": "E:\\Diabetic-retinopathy-detection-app-master\\dataset.csv"
+  "data_path": "E:\\DR full stack\\dataset.csv"
 }

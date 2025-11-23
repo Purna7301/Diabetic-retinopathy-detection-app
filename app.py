@@ -14,12 +14,10 @@ from werkzeug.utils import secure_filename
 import pandas as pd
 import numpy as np
 from joblib import load
-from xhtml2pdf import pisa
+from xhtml2pdf import pisa # Used for PDF generation
 
-# ✅ --- GridFS REWRITE ---
-# Import GridFS for storing files in MongoDB
+# ✅ --- GridFS INCLUDED ---
 import gridfs
-# --- END GridFS REWRITE ---
 
 # ============================================
 # FLASK CONFIGURATION
@@ -33,99 +31,110 @@ MONGO_DB_NAME = os.environ.get("MONGO_DB_NAME", "drapp")
 bcrypt = Bcrypt(app)
 
 # ============================================
-# MONGODB CONNECTION
+# SIMPLIFIED, ROBUST MONGODB CONNECTION
 # ============================================
-def _uri_has_placeholders(uri: str) -> bool:
-    u = (uri or "").lower()
-    return any(tok in u for tok in ["<", ">", "$", "?", "&"])
-
-# Create global variables for the db and file storage
 client = None
 db = None
 fs = None
 
 def connect_mongo():
+    """
+    Robust connection logic:
+    1) Try cloud MONGO_URI if provided
+    2) Else try local MongoDB
+    3) Else try mongomock (in-memory)
+    """
     global client, db, fs
-    tried = []
-    primary_uri = MONGO_URI
-    if not _uri_has_placeholders(primary_uri):
+
+    mongo_uri = os.environ.get("MONGO_URI")
+    mongo_db_name = os.environ.get("MONGO_DB_NAME", "drapp")
+
+    # 1) Try cloud (Atlas / MONGO_URI)
+    if mongo_uri:
         try:
-            client = MongoClient(primary_uri, serverSelectionTimeoutMS=8000)
+            app.logger.info(f"Attempting to connect to MongoDB Atlas: {mongo_uri}")
+            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=10000)
             client.admin.command("ping")
-            try:
-                db = client.get_default_database()
-                if not db or db.name in (None, "", "admin"):
-                    db = client[MONGO_DB_NAME]
-            except Exception:
-                db = client[MONGO_DB_NAME]
-            
-            # ✅ --- GridFS REWRITE ---
-            # Initialize GridFS with our database
+            db = client[mongo_db_name]
             fs = gridfs.GridFS(db)
-            # --- END GridFS REWRITE ---
-            
-            app.logger.info(f"Connected to MongoDB: {primary_uri}")
+            app.logger.info("Connected to MongoDB Atlas.")
             return client, db
         except Exception as e:
-            tried.append(f"{primary_uri} -> {e}")
-    
-    local_uri = f"mongodb://localhost:27017/{MONGO_DB_NAME}"
+            app.logger.error(f"MongoDB Atlas connection failed: {e}")
+
+    # 2) Try local MongoDB
     try:
-        client = MongoClient(local_uri, serverSelectionTimeoutMS=8000)
+        local_uri = f"mongodb://localhost:27017/{mongo_db_name}"
+        app.logger.info(f"Attempting to connect to local MongoDB: {local_uri}")
+        client = MongoClient(local_uri, serverSelectionTimeoutMS=5000)
         client.admin.command("ping")
-        db = client[MONGO_DB_NAME]
-        
-        # ✅ --- GridFS REWRITE ---
+        db = client[mongo_db_name]
         fs = gridfs.GridFS(db)
-        # --- END GridFS REWRITE ---
-        
-        app.logger.warning(f"Falling back to local MongoDB: {local_uri}")
+        app.logger.warning("Connected to local MongoDB.")
         return client, db
     except Exception as e:
-        tried.append(f"{local_uri} -> {e}")
-    
+        app.logger.error(f"Local MongoDB connection failed: {e}")
+
+    # 3) Fallback to mongomock (in-memory)
     try:
         import mongomock
+        app.logger.warning("Falling back to in-memory mongomock (data will NOT persist).")
         client = mongomock.MongoClient()
-        db = client[MONGO_DB_NAME]
-        
-        # ✅ --- GridFS REWRITE ---
+        db = client[mongo_db_name]
         fs = gridfs.GridFS(db)
-        # --- END GridFS REWRITE ---
-        
-        app.logger.warning("Using in-memory MongoDB via mongomock (data will NOT persist).")
         return client, db
     except Exception as e:
-        tried.append(f"mongomock -> {e}")
-    
-    raise RuntimeError("Could not connect to MongoDB. Please set a valid MONGO_URI or run MongoDB locally.")
+        app.logger.critical(f"mongomock fallback failed: {e}")
+        raise RuntimeError("Could not connect to MongoDB (Atlas/local/mongomock failed).")
 
-connect_mongo() # Run the connection function
-users_col = db["users"]
-reports_col = db["reports"]
-batches_col = db["batches"]
-batch_rows_col = db["batch_rows"]
-
+# Establish connection on import
 try:
-    users_col.create_index("username", unique=True)
-    reports_col.create_index([("probability", DESCENDING), ("created_at", DESCENDING)])
-    batches_col.create_index([("doctor_id", ASCENDING), ("created_at", DESCENDING)])
-    batch_rows_col.create_index([("batch_id", ASCENDING), ("ensemble_avg_prob", DESCENDING)])
-except Exception as e:
-    app.logger.warning(f"Index creation warning: {e}")
+    client, db = connect_mongo()
+    users_col = db["users"]
+    reports_col = db["reports"]
+    batches_col = db["batches"]
+    batch_rows_col = db["batch_rows"]
+except RuntimeError as e:
+    # Handle the case where all connection attempts failed
+    print(f"FATAL ERROR: {e}")
+    users_col = None
+    reports_col = None
+    batches_col = None
+    batch_rows_col = None
+
+# ✅ FIX 1: Use 'is not None' for boolean comparison on collection objects
+if users_col is not None and reports_col is not None and batches_col is not None and batch_rows_col is not None:
+    try:
+        users_col.create_index("username", unique=True)
+        reports_col.create_index([("probability", DESCENDING), ("created_at", DESCENDING)])
+        reports_col.create_index("patient_id")
+        reports_col.create_index("doctor_id")
+        batches_col.create_index([("doctor_id", ASCENDING), ("created_at", DESCENDING)])
+        batch_rows_col.create_index([("batch_id", ASCENDING), ("ensemble_avg_prob", DESCENDING)])
+    except Exception as e:
+        app.logger.warning(f"Index creation warning: {e}")
+else:
+    app.logger.critical("Database collections not initialized due to connection failure.")
+
 
 # ============================================
-# LOCAL PATHS FOR MODELS
+# PATHS AND DIRECTORIES
 # ============================================
 ARTIFACT_DIR = "artifacts"
 MODEL_DIR = "models"
+EXPORT_DIR = "exports"
+os.makedirs(EXPORT_DIR, exist_ok=True)
+
+# ✅ THRESHOLD
 ENSEMBLE_THRESHOLD_CUSTOM = 0.371
 
 # ============================================
 # SEED ADMIN USER
 # ============================================
-# ... (This section is unchanged) ...
 def seed_admin():
+    # ✅ FIX 2: Use 'is None' for safe check
+    if users_col is None: return 
+    
     admin_user = os.environ.get("ADMIN_USERNAME", "admin").strip().lower()
     admin_pass = os.environ.get("ADMIN_PASSWORD", "a")
     admin_name = os.environ.get("ADMIN_NAME", "admin")
@@ -159,7 +168,6 @@ seed_admin()
 # ============================================
 # AUTHENTICATION
 # ============================================
-# ... (This section is unchanged) ...
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
@@ -172,6 +180,7 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
+    if users_col is None: return None # Safety check if DB failed
     try:
         doc = users_col.find_one({"_id": ObjectId(user_id)})
     except Exception:
@@ -186,7 +195,6 @@ def is_admin():
 # ============================================
 # TIMEZONE HELPERS (IST)
 # ============================================
-# ... (This section is unchanged) ...
 IST = ZoneInfo("Asia/Kolkata")
 UTC = ZoneInfo("UTC")
 
@@ -202,9 +210,8 @@ def ist_filter(dt, fmt="%Y-%m-%d %H:%M"):
     return to_ist_str(dt, fmt)
 
 # ============================================
-# LOCAL ML ARTIFACTS LOADING
+# ML ARTIFACTS LOADING
 # ============================================
-# ... (This section is unchanged) ...
 SCALER = None
 FEATURES = []
 CLINICAL_FEATURES = ["fasting_glucose", "hba1c", "diabetes_duration"]
@@ -232,6 +239,7 @@ def load_artifacts():
     with open(meta_path, "r") as f:
         meta = json.load(f)
     
+    # ✅ 8 FEATURES ONLY (NO derived features)
     FEATURES = meta.get("features", [
         "exudates_count", "hemorrhages_count", "microaneurysms_count",
         "vessel_tortuosity", "macular_thickness", "fasting_glucose",
@@ -285,15 +293,17 @@ def load_artifacts():
         
         try:
             MODELS[name] = load(path)
-            app.logger.info(f"Successfully loaded model '{name}' from local disk.")
         except Exception as e:
             app.logger.error(f"Failed to load model {name} at {path}: {e}")
     
     ENSEMBLE_LABEL = f"Ensemble(mean) of {len(MODELS)} model{'s' if len(MODELS) != 1 else ''}"
 
 def compute_ensemble_outputs(feature_dict: dict):
+    """
+    Computes ensemble prediction and individual model probabilities.
+    """
     if SCALER is None or not MODELS:
-        raise RuntimeError("Model artifacts not loaded. Check R2 connection.")
+        raise RuntimeError("Model artifacts not loaded. Run train.py first.")
     
     X = pd.DataFrame([feature_dict], columns=[
         "exudates_count", "hemorrhages_count", "microaneurysms_count",
@@ -301,6 +311,7 @@ def compute_ensemble_outputs(feature_dict: dict):
         "hba1c", "diabetes_duration"
     ]).copy()
     
+    # ✅ Clinical scaling: 0.1
     X.loc[:, CLINICAL_FEATURES] = X.loc[:, CLINICAL_FEATURES].astype(float) * 0.1
     X = X[FEATURES]
     X_scaled = SCALER.transform(X)
@@ -312,17 +323,22 @@ def compute_ensemble_outputs(feature_dict: dict):
         mdl = MODELS.get(name)
         if mdl is None:
             continue
+        
         prob = float(mdl.predict_proba(X_scaled)[:, 1][0])
+        
+        # ✅ Store PROBABILITY
         per_model_details.append({
             "name": name,
             "probability": prob
         })
+        
         probs.append(prob)
     
     if not probs:
         raise RuntimeError("No models loaded.")
     
     avg_prob = float(np.mean(probs))
+    # ✅ Decision: >= 0.371
     final_pred = int(avg_prob >= ENSEMBLE_THRESHOLD_CUSTOM)
     
     return {
@@ -336,13 +352,17 @@ load_artifacts()
 # ============================================
 # ROUTES
 # ============================================
-# ... (index, register, login, logout, patient_dashboard are unchanged) ...
+
 @app.route("/")
 def index():
     return render_template("index.html", model_name=ENSEMBLE_LABEL)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if users_col is None:
+        flash("Database connection failed. Cannot register.", "danger")
+        return redirect(url_for("index"))
+    
     if request.method == "POST":
         role = request.form.get("role")
         name = request.form.get("name", "").strip()
@@ -378,6 +398,10 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if users_col is None:
+        flash("Database connection failed. Cannot login.", "danger")
+        return redirect(url_for("index"))
+    
     if request.method == "POST":
         username = request.form.get("username", "").strip().lower()
         password = request.form.get("password", "")
@@ -409,18 +433,28 @@ def patient_dashboard():
     if current_user.role != "patient":
         abort(403)
     
+    if reports_col is None or users_col is None:
+        flash("Database connection error.", "danger")
+        return render_template("patient_dashboard.html", user=current_user, reports=[], q="", model_name=ENSEMBLE_LABEL)
+
     q = request.args.get("q", "").strip().lower()
     pid = ObjectId(current_user.id)
     
+    # Efficiently fetch reports
     reports = list(reports_col.find({"patient_id": pid}).sort("created_at", DESCENDING))
+    
+    # Cache for doctor names
+    doctor_cache = {}
     
     for r in reports:
         did = r.get("doctor_id")
+        r["doctor_name"] = "Not assigned"
+        
         if did:
-            ddoc = users_col.find_one({"_id": did}) or {}
-            r["doctor_name"] = ddoc.get("name", "Unknown")
-        else:
-            r["doctor_name"] = "Not assigned"
+            if did not in doctor_cache:
+                ddoc = users_col.find_one({"_id": did}, {"name": 1})
+                doctor_cache[did] = ddoc.get("name", "Unknown") if ddoc else "Unknown"
+            r["doctor_name"] = doctor_cache[did]
             
         r["id_str"] = str(r["_id"])
         r["created_str"] = to_ist_str(r.get("created_at"))
@@ -435,19 +469,21 @@ def patient_dashboard():
     
     return render_template("patient_dashboard.html", user=current_user, reports=reports, q=q, model_name=ENSEMBLE_LABEL)
 
-# ============================================
-# ✅ --- GridFS REWRITE: new_assessment ---
-# ============================================
 @app.route("/assessment/new", methods=["GET", "POST"])
 @login_required
 def new_assessment():
     if current_user.role != "patient":
         abort(403)
     
+    if reports_col is None or users_col is None:
+        flash("Database connection error.", "danger")
+        return redirect(url_for("patient_dashboard"))
+    
     doctors = list(users_col.find({"role": "doctor"}).sort("name", ASCENDING))
     
     if request.method == "POST":
         try:
+            # Type casting validation
             feature_values = {
                 "exudates_count": int(request.form["exudates_count"]),
                 "hemorrhages_count": int(request.form["hemorrhages_count"]),
@@ -467,9 +503,13 @@ def new_assessment():
         
         try:
             out = compute_ensemble_outputs(feature_values)
+        except RuntimeError as e:
+            app.logger.exception(e)
+            flash(str(e), "danger") # Model artifacts missing. Train the model first.
+            return redirect(url_for("patient_dashboard"))
         except Exception as e:
             app.logger.exception(e)
-            flash("Model artifacts missing. Check local files.", "danger")
+            flash("An unexpected error occurred during model prediction.", "danger")
             return redirect(url_for("patient_dashboard"))
         
         report_doc = {
@@ -483,154 +523,120 @@ def new_assessment():
             "ensemble_balanced_accuracy": ENSEMBLE_BALACC,
             "per_model_details": out["per_model"],
             "created_at": datetime.datetime.utcnow(),
-            "gridfs_file_id": None # Placeholder
         }
         
-        # --- PDF Generation is the same ---
-        patient = users_col.find_one({"_id": report_doc["patient_id"]}) or {}
-        doctor = users_col.find_one({"_id": report_doc.get("doctor_id")}) if report_doc.get("doctor_id") else {}
+        result = reports_col.insert_one(report_doc)
         
-        context = {
-            "patient_name": patient.get("name", "Unknown"),
-            "patient_username": patient.get("username", ""),
-            "doctor_name": (doctor or {}).get("name", "Not assigned"),
-            "doctor_username": (doctor or {}).get("username", ""),
-            "created_at": to_ist_str(report_doc["created_at"]),
-            "features": report_doc["features"],
-            "probability": report_doc.get("probability", 0.0),
-            "prediction": report_doc.get("prediction", 0),
-            "threshold": report_doc.get("threshold", ENSEMBLE_THRESHOLD_CUSTOM),
-            "ensemble_balanced_accuracy": report_doc.get("ensemble_balanced_accuracy", 0.0),
-            "model_name": report_doc.get("model_name", ENSEMBLE_LABEL),
-            "per_model_details": report_doc.get("per_model_details", []),
-        }
-        
-        html = render_template("report_pdf.html", **context)
-        pdf_io = io.BytesIO()
-        pisa_status = pisa.CreatePDF(io.StringIO(html), dest=pdf_io)
-        
-        if pisa_status.err:
-            flash("Assessment created but PDF generation failed.", "warning")
-            return redirect(url_for("patient_dashboard"))
-        
-        pdf_io.seek(0)
-        
-        # --- GridFS REWRITE: Upload PDF to GridFS ---
-        try:
-            # We save the report doc first to get its _id
-            res = reports_col.insert_one(report_doc)
-            report_id = res.inserted_id
-            
-            # Use the _id as the filename
-            object_name = f"DR_Assessment_{report_id}.pdf"
-            
-            # Upload the PDF data to GridFS
-            file_id = fs.put(
-                pdf_io, 
-                filename=object_name, 
-                contentType="application/pdf"
-            )
-            
-            # Add the GridFS file ID to our report doc
-            reports_col.update_one(
-                {"_id": report_id},
-                {"$set": {"gridfs_file_id": file_id}}
-            )
-            
-            flash("Assessment created successfully.", "success")
-            # Redirect to the download function to start the download
-            return redirect(url_for('download_report_pdf', report_id=str(report_id)))
-
-        except Exception as e:
-            app.logger.error(f"Failed to upload PDF to GridFS: {e}")
-            flash("Assessment created, but PDF save failed.", "danger")
-            return redirect(url_for("patient_dashboard"))
+        # FIX: Redirect to dashboard and STOP AUTO-DOWNLOAD
+        flash(f"Assessment report created (ID: {str(result.inserted_id)}). You can download the PDF from your dashboard.", "success")
+        return redirect(url_for("patient_dashboard"))
     
     return render_template("report_form.html", doctors=doctors, model_name=ENSEMBLE_LABEL)
 
-# ============================================
-# ✅ --- GridFS REWRITE: download_report_pdf ---
-# ============================================
-@app.route("/report/<report_id>/download")
+@app.route("/report/<rid>/download_pdf", methods=["GET"])
 @login_required
-def download_report_pdf(report_id):
-    # --- Check Permissions (unchanged) ---
-    if not is_admin() and current_user.role != "doctor":
-        try:
-            report_check = reports_col.find_one(
-                {"_id": ObjectId(report_id), "patient_id": ObjectId(current_user.id)}
-            )
-            if not report_check:
-                flash("You do not have permission to view this report.", "danger")
-                return redirect(url_for("patient_dashboard"))
-        except Exception:
-            abort(403)
-    
+def download_report_pdf(rid):
+    if reports_col is None or users_col is None:
+        flash("Database connection error.", "danger")
+        return redirect(url_for("index"))
+
     try:
-        report_doc = reports_col.find_one({"_id": ObjectId(report_id)})
-        if not report_doc:
-            abort(404)
+        report_id = ObjectId(rid)
     except Exception:
         abort(404)
 
-    # --- GridFS REWRITE: Get file from GridFS ---
-    file_id = report_doc.get("gridfs_file_id")
-    if not file_id:
-        flash("PDF not found for this report. It may be an old record.", "danger")
-        return redirect(request.referrer or url_for("patient_dashboard"))
+    report_doc = reports_col.find_one({"_id": report_id})
+    if not report_doc:
+        abort(404)
 
-    try:
-        grid_file = fs.get(file_id)
-        return send_file(
-            grid_file,
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=grid_file.filename
-        )
-    except Exception as e:
-        app.logger.error(f"Failed to get file from GridFS: {e}")
-        flash("Could not find or retrieve the PDF file from the database.", "danger")
-        return redirect(request.referrer or url_for("patient_dashboard"))
+    # Authorization check
+    if current_user.role == "patient" and report_doc.get("patient_id") != ObjectId(current_user.id):
+        abort(403)
+    
+    patient = users_col.find_one({"_id": report_doc["patient_id"]}) or {}
+    doctor = users_col.find_one({"_id": report_doc.get("doctor_id")}) if report_doc.get("doctor_id") else {}
 
-# ============================================
-# ... (doctor_dashboard is unchanged) ...
+    context = {
+        "patient_name": patient.get("name", "Unknown"),
+        "patient_username": patient.get("username", ""),
+        "doctor_name": (doctor or {}).get("name", "Not assigned"),
+        "doctor_username": (doctor or {}).get("username", ""),
+        "created_at": to_ist_str(report_doc["created_at"]),
+        "features": report_doc["features"],
+        "probability": report_doc.get("probability", 0.0),
+        "prediction": report_doc.get("prediction", 0),
+        "threshold": report_doc.get("threshold", ENSEMBLE_THRESHOLD_CUSTOM),
+        "ensemble_balanced_accuracy": report_doc.get("ensemble_balanced_accuracy", 0.0),
+        "model_name": report_doc.get("model_name", ENSEMBLE_LABEL),
+        "per_model_details": report_doc.get("per_model_details", []),
+    }
+
+    # Generate PDF (using the new, better looking template)
+    html = render_template("report_pdf.html", **context)
+    pdf_io = io.BytesIO()
+    pisa_status = pisa.CreatePDF(io.StringIO(html), dest=pdf_io)
+
+    if pisa_status.err:
+        app.logger.error("PDF generation failed using xhtml2pdf.")
+        flash("PDF generation failed.", "warning")
+        return redirect(url_for("patient_dashboard" if current_user.role == "patient" else "doctor_dashboard"))
+    
+    pdf_io.seek(0)
+    return send_file(pdf_io, as_attachment=True,
+                        download_name=f"DR_Assessment_{str(report_doc['_id'])}.pdf",
+                        mimetype="application/pdf")
+
 @app.route("/doctor")
 @login_required
 def doctor_dashboard():
     if current_user.role not in ("doctor", "admin"):
         abort(403)
     
+    if reports_col is None or users_col is None:
+        flash("Database connection error.", "danger")
+        return render_template("doctor_dashboard.html", reports=[], order="desc", q="", model_name=ENSEMBLE_LABEL)
+        
     q = request.args.get("q", "").strip().lower()
     order = request.args.get("order", "desc")
     sort_dir = DESCENDING if order == "desc" else ASCENDING
     
-    reports = list(reports_col.find({}).sort("probability", sort_dir))
+    # FIX: Correct filtering for Doctors
+    query = {}
+    if current_user.role == "doctor":
+        # Doctors see reports assigned to them OR reports with no doctor assigned (unassigned)
+        query = {
+            "$or": [
+                {"doctor_id": ObjectId(current_user.id)},
+                {"doctor_id": {"$exists": False}}
+            ]
+        }
+        
+    reports = list(reports_col.find(query).sort("probability", sort_dir))
     
     cache = {}
-    processed_reports = []
+    
     for r in reports:
-        pid = r.get("patient_id")
-        if not pid:
-            continue
-            
+        pid = r["patient_id"]
         did = r.get("doctor_id")
         
+        # Cache patient name
         if pid not in cache:
-            pdoc = users_col.find_one({"_id": pid}) or {}
+            pdoc = users_col.find_one({"_id": pid}, {"name": 1}) or {}
             cache[pid] = pdoc.get("name", "Unknown")
         
-        if did and did not in cache:
-            ddoc = users_col.find_one({"_id": did}) or {}
-            cache[did] = ddoc.get("name", "Unknown")
-        
+        # Cache doctor name
+        r["doctor_name"] = "Not assigned"
+        if did:
+            if did not in cache:
+                ddoc = users_col.find_one({"_id": did}, {"name": 1}) or {}
+                cache[did] = ddoc.get("name", "Unknown")
+            r["doctor_name"] = cache[did]
+            
         r["patient_name"] = cache.get(pid, "Unknown")
-        r["doctor_name"] = cache.get(did, "Not assigned")
+        
         r["id_str"] = str(r["_id"])
         r["created_str"] = to_ist_str(r.get("created_at"))
-        processed_reports.append(r)
     
-    reports = processed_reports
-
     if q:
         filtered = []
         for r in reports:
@@ -641,7 +647,6 @@ def doctor_dashboard():
     
     return render_template("doctor_dashboard.html", reports=reports, order=order, q=q, model_name=ENSEMBLE_LABEL)
 
-# ... (allowed_file and doctor_bulk_home are unchanged) ...
 ALLOWED_EXTENSIONS = {"csv"}
 
 def allowed_file(fname: str) -> bool:
@@ -653,6 +658,10 @@ def doctor_bulk_home():
     if current_user.role not in ("doctor", "admin"):
         abort(403)
     
+    if batches_col is None:
+        flash("Database connection error.", "danger")
+        return render_template("doctor_bulk.html", batches=[], q="", model_name=ENSEMBLE_LABEL)
+
     q = request.args.get("q", "").strip().lower()
     
     if is_admin():
@@ -662,22 +671,23 @@ def doctor_bulk_home():
     
     for b in batches:
         b["id_str"] = str(b["_id"])
-        b["created_str"] = to_ist_str(b.get("created_at"))
+        b["created_str"] = to_ist_str(b["created_at"])
     
     if q:
         batches = [b for b in batches if q in (b.get("filename", "").lower()) or q in b["created_str"].lower()]
     
     return render_template("doctor_bulk.html", batches=batches, q=q, model_name=ENSEMBLE_LABEL)
 
-# ============================================
-# ✅ --- GridFS REWRITE: doctor_bulk_upload ---
-# ============================================
 @app.route("/doctor/bulk/upload", methods=["POST"])
 @login_required
 def doctor_bulk_upload():
     if current_user.role not in ("doctor", "admin"):
         abort(403)
     
+    if batches_col is None or batch_rows_col is None:
+        flash("Database connection error.", "danger")
+        return redirect(url_for("doctor_bulk_home"))
+
     f = request.files.get("file")
     if not f or f.filename == "":
         flash("Please choose a CSV file.", "danger")
@@ -690,11 +700,13 @@ def doctor_bulk_upload():
     filename = secure_filename(f.filename)
     
     try:
+        f.seek(0)
         df = pd.read_csv(f)
     except Exception:
-        flash("Failed to read CSV. Check the file format.", "danger")
+        flash("Failed to read CSV. Check the file format and contents.", "danger")
         return redirect(url_for("doctor_bulk_home"))
     
+    # ✅ 8 FEATURES ONLY
     base_features = [
         "exudates_count", "hemorrhages_count", "microaneurysms_count",
         "vessel_tortuosity", "macular_thickness", "fasting_glucose",
@@ -708,6 +720,7 @@ def doctor_bulk_upload():
     
     has_label = "retinal_disorder" in df.columns
     
+    # Ensure all feature columns are numeric, coercing errors to NaN
     for col in base_features:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     
@@ -715,72 +728,91 @@ def doctor_bulk_upload():
         df["retinal_disorder"] = pd.to_numeric(df["retinal_disorder"], errors="coerce")
     
     rows_before = len(df)
+    # Drop rows where any of the required features are NaN after coercion
     df = df.dropna(subset=base_features)
     
     if len(df) < rows_before:
         flash(f"Dropped {rows_before - len(df)} rows with missing/invalid feature values.", "info")
     
+    if len(df) == 0:
+        flash("No valid rows remaining for prediction after cleaning.", "danger")
+        return redirect(url_for("doctor_bulk_home"))
+
     batch_id = ObjectId()
+    # Path for saving the results XLSX on the filesystem
+    export_path = os.path.join(EXPORT_DIR, f"bulk_{batch_id}.xlsx")
     
     out_rows = []
     rows_docs = []
     
-    for idx, row in df.iterrows():
-        feature_values = {k: float(row[k]) for k in base_features}
-        
-        try:
-            out = compute_ensemble_outputs(feature_values)
-        except Exception as e:
-            app.logger.exception(e)
-            flash(f"Error processing row {idx}: {e}", "danger")
-            continue
-        
-        rec = {k: row[k] for k in base_features}
-        if has_label:
-            rec["retinal_disorder"] = row.get("retinal_disorder")
-        
-        for pm in out["per_model"]:
-            rec[f"{pm['name']}_prob"] = pm["probability"]
-        
-        rec["ensemble_avg_prob"] = out["avg_prob"]
-        rec["ensemble_pred"] = out["final_pred"]
-        out_rows.append(rec)
-        
-        per_model_map = {pm["name"]: {"prob": pm["probability"]} for pm in out["per_model"]}
-        rows_docs.append({
-            "batch_id": batch_id,
-            "row_index": int(idx),
-            "features": feature_values,
-            "true_label": int(row["retinal_disorder"]) if has_label and not pd.isna(row["retinal_disorder"]) else None,
-            "per_model": per_model_map,
-            "ensemble_avg_prob": out["avg_prob"],
-            "ensemble_pred": out["final_pred"],
-        })
-    
-    # --- GridFS REWRITE: Upload XLSX to GridFS ---
     try:
-        out_df = pd.DataFrame(out_rows)
-        xlsx_io = io.BytesIO()
-        with pd.ExcelWriter(xlsx_io, engine="openpyxl") as writer:
-            out_df.to_excel(writer, index=False, sheet_name="predictions")
-        xlsx_io.seek(0)
-        
-        # Upload the XLSX data to GridFS
-        file_id = fs.put(
-            xlsx_io, 
-            filename=f"bulk_{batch_id}.xlsx", 
-            contentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        for idx, row in df.iterrows():
+            feature_values = {k: float(row[k]) for k in base_features}
+            
+            try:
+                out = compute_ensemble_outputs(feature_values)
+            except Exception as e:
+                # Log the error but continue processing other rows
+                app.logger.error(f"Error processing row {idx} with features {feature_values}: {e}")
+                continue
+            
+            rec = {k: row[k] for k in base_features}
+            if has_label:
+                rec["retinal_disorder"] = row.get("retinal_disorder")
+            
+            # ✅ Store PROBABILITIES for each model
+            for pm in out["per_model"]:
+                rec[f"{pm['name']}_prob"] = pm["probability"]
+            
+            rec["ensemble_avg_prob"] = out["avg_prob"]
+            rec["ensemble_pred"] = out["final_pred"]
+            out_rows.append(rec)
+            
+            per_model_map = {pm["name"]: {"prob": pm["probability"]} for pm in out["per_model"]}
+            
+            true_label = None
+            if has_label and not pd.isna(row["retinal_disorder"]):
+                try:
+                    true_label = int(row["retinal_disorder"])
+                except ValueError:
+                    app.logger.warning(f"True label not an integer for row {idx}")
+                    
+            rows_docs.append({
+                "batch_id": batch_id,
+                "row_index": int(idx),
+                "features": feature_values,
+                "true_label": true_label,
+                "per_model": per_model_map,
+                "ensemble_avg_prob": out["avg_prob"],
+                "ensemble_pred": out["final_pred"],
+            })
+    except RuntimeError as e:
+        flash(str(e), "danger") # Model artifacts not loaded
+        return redirect(url_for("doctor_bulk_home"))
     except Exception as e:
         app.logger.exception(e)
-        flash("Failed to write and upload XLSX. Ensure openpyxl is installed.", "danger")
+        flash("An unexpected error occurred during bulk processing.", "danger")
+        return redirect(url_for("doctor_bulk_home"))
+
+    if not out_rows:
+        flash("No rows were successfully processed.", "danger")
+        return redirect(url_for("doctor_bulk_home"))
+
+    try:
+        out_df = pd.DataFrame(out_rows)
+        # Use OpenPyXL for XLSX writing to disk
+        with pd.ExcelWriter(export_path, engine="openpyxl") as writer:
+            out_df.to_excel(writer, index=False, sheet_name="predictions")
+    except Exception as e:
+        app.logger.exception(e)
+        flash("Failed to write XLSX to disk. Ensure openpyxl is installed and disk is accessible.", "danger")
         return redirect(url_for("doctor_bulk_home"))
     
     batches_col.insert_one({
         "_id": batch_id,
         "doctor_id": ObjectId(current_user.id),
         "filename": filename,
-        "gridfs_file_id": file_id,  # Store the GridFS ID
+        "file_path": export_path,
         "row_count": len(out_rows),
         "has_label": has_label,
         "created_at": datetime.datetime.utcnow(),
@@ -788,29 +820,35 @@ def doctor_bulk_upload():
     })
     
     if rows_docs:
+        # Bulk insert batch rows
         for i in range(0, len(rows_docs), 1000):
             batch_rows_col.insert_many(rows_docs[i:i+1000])
     
-    # --- GridFS REWRITE: Redirect to the download function ---
-    flash("Batch processed successfully.", "success")
-    return redirect(url_for('doctor_bulk_download', bid=str(batch_id)))
+    # FIX: Redirect to dashboard and STOP AUTO-DOWNLOAD
+    flash(f"Bulk prediction for {len(out_rows)} rows completed. You can download the results from the list below.", "success")
+    return redirect(url_for("doctor_bulk_home"))
 
-# ... (doctor_bulk_view is unchanged) ...
 @app.route("/doctor/bulk/<bid>", methods=["GET"])
 @login_required
 def doctor_bulk_view(bid):
     if current_user.role not in ("doctor", "admin"):
         abort(403)
     
+    if batches_col is None or batch_rows_col is None:
+        flash("Database connection error.", "danger")
+        return redirect(url_for("doctor_bulk_home"))
+
     try:
         batch_id = ObjectId(bid)
     except Exception:
         abort(404)
     
-    if is_admin():
-        batch = batches_col.find_one({"_id": batch_id})
-    else:
-        batch = batches_col.find_one({"_id": batch_id, "doctor_id": ObjectId(current_user.id)})
+    # Authorization check
+    query = {"_id": batch_id}
+    if not is_admin():
+        query["doctor_id"] = ObjectId(current_user.id)
+        
+    batch = batches_col.find_one(query)
     
     if not batch:
         abort(404)
@@ -834,8 +872,9 @@ def doctor_bulk_view(bid):
         pm_full = {}
         
         for name in MODEL_ORDER:
-            d = per_model_map.get(name, {"prob": 0.0})
-            pm_full[name] = d
+            # Safely get model probability, defaulting to 0.0
+            d = per_model_map.get(name, {}).get("prob", 0.0)
+            pm_full[name] = {"prob": d}
         
         row_obj = {
             "features": r.get("features", {}),
@@ -849,6 +888,7 @@ def doctor_bulk_view(bid):
     
     if q:
         def row_matches(r):
+            # Creates a single searchable string blob
             blob = " ".join([
                 *(str(r["features"].get(k, "")) for k in base_features),
                 str(r.get("true_label", "")),
@@ -861,7 +901,7 @@ def doctor_bulk_view(bid):
     
     batch_ctx = {
         "id_str": str(batch["_id"]),
-        "created_str": to_ist_str(batch.get("created_at")),
+        "created_str": to_ist_str(batch["created_at"]),
         "filename": batch.get("filename", ""),
         "row_count": batch.get("row_count", 0),
         "has_label": batch.get("has_label", False),
@@ -869,7 +909,7 @@ def doctor_bulk_view(bid):
     }
     
     return render_template(
-        "doctor_bulk.html",
+        "doctor_bulk_view.html", 
         batch=batch_ctx,
         rows=processed_rows,
         model_order=MODEL_ORDER,
@@ -878,57 +918,58 @@ def doctor_bulk_view(bid):
         model_name=ENSEMBLE_LABEL
     )
 
-# ============================================
-# ✅ --- GridFS REWRITE: doctor_bulk_download ---
-# ============================================
 @app.route("/doctor/bulk/<bid>/download", methods=["GET"])
 @login_required
 def doctor_bulk_download(bid):
     if current_user.role not in ("doctor", "admin"):
         abort(403)
     
+    if batches_col is None:
+        flash("Database connection error.", "danger")
+        return redirect(url_for("doctor_bulk_home"))
+
     try:
         batch_id = ObjectId(bid)
     except Exception:
         abort(404)
     
-    if is_admin():
-        batch = batches_col.find_one({"_id": batch_id})
-    else:
-        batch = batches_col.find_one({"_id": batch_id, "doctor_id": ObjectId(current_user.id)})
+    # Authorization check
+    query = {"_id": batch_id}
+    if not is_admin():
+        query["doctor_id"] = ObjectId(current_user.id)
+        
+    batch = batches_col.find_one(query)
     
     if not batch:
         abort(404)
     
-    # --- GridFS REWRITE: Get file from GridFS ---
-    file_id = batch.get("gridfs_file_id")
-    if not file_id:
-        flash("File not found for this batch.", "danger")
+    path = batch.get("file_path")
+    # Check if the file exists on the filesystem
+    if not path or not os.path.exists(path):
+        flash("Export file missing.", "danger")
         return redirect(url_for("doctor_bulk_view", bid=bid))
+    
+    return send_file(path, as_attachment=True, download_name=os.path.basename(path),
+                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    try:
-        grid_file = fs.get(file_id)
-        return send_file(
-            grid_file,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name=grid_file.filename
-        )
-    except Exception as e:
-        app.logger.error(f"Failed to get file from GridFS: {e}")
-        flash("Could not find or retrieve the XLSX file from the database.", "danger")
-        return redirect(url_for("doctor_bulk_view", bid=bid))
-
-# ... (admin_dashboard is unchanged) ...
 @app.route("/admin")
 @login_required
 def admin_dashboard():
     if not is_admin():
         abort(403)
     
+    if users_col is None or batches_col is None:
+        flash("Database connection error.", "danger")
+        return render_template("admin_dashboard.html", patients=[], doctors=[], batches=[], model_name="Admin")
+        
     patients = list(users_col.find({"role": "patient"}).sort("created_at", DESCENDING))
     doctors = list(users_col.find({"role": "doctor"}).sort("created_at", DESCENDING))
     batches = list(batches_col.find({}).sort("created_at", DESCENDING))
+    
+    # Cache doctor names for batches
+    doctor_cache = {}
+    for d in doctors:
+        doctor_cache[d["_id"]] = {"name": d["name"], "username": d["username"]}
     
     for u in patients + doctors:
         u["id_str"] = str(u["_id"])
@@ -936,34 +977,30 @@ def admin_dashboard():
     
     for b in batches:
         b["id_str"] = str(b["_id"])
-        b["created_str"] = to_ist_str(b.get("created_at"))
+        b["created_str"] = to_ist_str(b["created_at"])
+        d_info = doctor_cache.get(b["doctor_id"], {})
+        b["doctor_name"] = d_info.get("name", "Unknown")
+        b["doctor_username"] = d_info.get("username", "unknown")
         
-        doctor_id = b.get("doctor_id")
-        if doctor_id:
-            ddoc = users_col.find_one({"_id": doctor_id}) or {}
-            b["doctor_name"] = ddoc.get("name", "Unknown")
-            b["doctor_username"] = ddoc.get("username", "")
-        else:
-            b["doctor_name"] = "N/A (No Doctor)"
-            b["doctor_username"] = ""
-    
     return render_template("admin_dashboard.html",
-                          patients=patients, doctors=doctors, batches=batches,
-                          model_name="Admin")
+                           patients=patients, doctors=doctors, batches=batches,
+                           model_name="Admin")
 
-# ============================================
-# ✅ --- GridFS REWRITE: admin_delete_user ---
-# ============================================
 @app.route("/admin/user/<uid>/delete", methods=["POST"])
 @login_required
 def admin_delete_user(uid):
     if not is_admin():
         abort(403)
     
+    if users_col is None or reports_col is None or batches_col is None or batch_rows_col is None:
+        flash("Database connection error.", "danger")
+        return redirect(url_for("admin_dashboard"))
+    
     try:
         user_id = ObjectId(uid)
     except Exception:
-        abort(404)
+        flash("Invalid user ID.", "danger")
+        return redirect(url_for("admin_dashboard"))
     
     user_doc = users_col.find_one({"_id": user_id})
     if not user_doc:
@@ -978,80 +1015,75 @@ def admin_delete_user(uid):
             return redirect(url_for("admin_dashboard"))
     
     if role == "patient":
-        # --- GridFS REWRITE: Delete reports from GridFS ---
-        patient_reports = list(reports_col.find({"patient_id": user_id}))
-        for r in patient_reports:
-            if r.get("gridfs_file_id"):
-                try:
-                    fs.delete(r["gridfs_file_id"])
-                except Exception as e:
-                    app.logger.warning(f"Failed to delete GridFS file {r['gridfs_file_id']}: {e}")
-        
         res = reports_col.delete_many({"patient_id": user_id})
         users_col.delete_one({"_id": user_id})
-        flash(f"Deleted patient, {res.deleted_count} reports, and associated files.", "success")
+        flash(f"Deleted patient **{user_doc.get('name', 'Unknown')}** and **{res.deleted_count}** reports.", "success")
     
     elif role == "doctor":
+        # Unassign doctor from reports
         reports_col.update_many({"doctor_id": user_id}, {"$unset": {"doctor_id": ""}})
         doctor_batches = list(batches_col.find({"doctor_id": user_id}))
         bid_list = [b["_id"] for b in doctor_batches]
         
-        # --- GridFS REWRITE: Delete batch files from GridFS ---
+        # Clean up files on disk
         for b in doctor_batches:
-            if b.get("gridfs_file_id"):
+            path = b.get("file_path")
+            if path and os.path.exists(path):
                 try:
-                    fs.delete(b["gridfs_file_id"])
-                except Exception as e:
-                    app.logger.warning(f"Failed to delete GridFS file {b['gridfs_file_id']}: {e}")
-
+                    os.remove(path)
+                except Exception:
+                    app.logger.warning(f"Failed to remove export: {path}")
+        
+        # Delete batch rows and batch records
         if bid_list:
             batch_rows_col.delete_many({"batch_id": {"$in": bid_list}})
         
         batches_col.delete_many({"doctor_id": user_id})
         users_col.delete_one({"_id": user_id})
-        flash(f"Deleted doctor, their batches, rows, and associated files.", "success")
+        flash(f"Deleted doctor **{user_doc.get('name', 'Unknown')}**, their batches, and rows. Their assigned reports are now unassigned.", "success")
     
     else:
+        # For any other role
         users_col.delete_one({"_id": user_id})
-        flash("User deleted.", "success")
+        flash(f"User **{user_doc.get('name', 'Unknown')}** deleted.", "success")
     
     return redirect(url_for("admin_dashboard"))
 
-# ============================================
-# ✅ --- GridFS REWRITE: admin_delete_batch ---
-# ============================================
 @app.route("/admin/batch/<bid>/delete", methods=["POST"])
 @login_required
 def admin_delete_batch(bid):
     if not is_admin():
         abort(403)
     
+    if batches_col is None or batch_rows_col is None:
+        flash("Database connection error.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
     try:
         batch_id = ObjectId(bid)
     except Exception:
-        abort(404)
+        flash("Invalid batch ID.", "danger")
+        return redirect(url_for("admin_dashboard"))
     
     batch = batches_col.find_one({"_id": batch_id})
     if not batch:
         flash("Batch not found.", "danger")
         return redirect(url_for("admin_dashboard"))
     
-    # --- GridFS REWRITE: Delete file from GridFS ---
-    if batch.get("gridfs_file_id"):
+    path = batch.get("file_path")
+    if path and os.path.exists(path):
         try:
-            fs.delete(batch["gridfs_file_id"])
-        except Exception as e:
-            app.logger.warning(f"Failed to delete GridFS file {batch['gridfs_file_id']}: {e}")
+            os.remove(path)
+        except Exception:
+            app.logger.warning(f"Failed to remove export: {path}")
     
     batch_rows_col.delete_many({"batch_id": batch_id})
     batches_col.delete_one({"_id": batch_id})
     
-    flash("Batch, rows, and associated file deleted.", "success")
+    flash(f"Batch **{batch.get('filename', 'Unknown File')}** and its rows deleted. Export file removed.", "success")
     return redirect(url_for("admin_dashboard"))
 
-# ============================================
-# RUNNER
-# ============================================
 if __name__ == "__main__":
+    # Use a dynamic port or default to 8000
     port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=True)

@@ -1,25 +1,57 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card" style="max-width: 500px; margin: 2rem auto;">
-    <h2 style="text-align: center; margin-bottom: 2rem;">Login</h2>
+<style>
+  /* Small card + input styling to match register/report */
+  .card {
+    background: var(--card-bg, #fff);
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+    padding: 1.75rem;
+  }
 
-    <form method="POST">
+  .form-group { margin-bottom: 1rem; }
+  label { display:block; margin-bottom: 0.4rem; font-weight:600; }
+  input[type="text"], input[type="password"], select {
+    width:100%;
+    padding: .6rem .7rem;
+    border-radius:6px;
+    border:1px solid #d0d7de;
+    box-sizing:border-box;
+    font-size:1rem;
+    background: var(--input-bg, #fff);
+    color: var(--input-color, #111);
+  }
+
+  /* Make selects and options readable across themes */
+  select, select option {
+    color: #111 !important;
+    background: #fff !important;
+  }
+
+  .btn { padding:.65rem .9rem; border-radius:6px; border:none; cursor:pointer; }
+  .btn-primary { background: #2563eb; color:#fff; }
+</style>
+
+<div class="card" style="max-width: 480px; margin: 2rem auto;">
+    <h2 style="text-align: center; margin-bottom: 1.25rem;">Login</h2>
+
+    <form method="POST" novalidate>
         <div class="form-group">
             <label for="username">Username</label>
-            <input type="text" id="username" name="username" required autofocus>
+            <input autocomplete="username" type="text" id="username" name="username" required autofocus>
         </div>
 
         <div class="form-group">
             <label for="password">Password</label>
-            <input type="password" id="password" name="password" required>
+            <input autocomplete="current-password" type="password" id="password" name="password" required>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 1.1rem;">Login</button>
+        <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 1.05rem;">Login</button>
     </form>
 
-    <p style="text-align: center; margin-top: 1.5rem;">
-        Don't have an account? <a href="/register" style="color: var(--primary);">Register here</a>
+    <p style="text-align: center; margin-top: 1rem;">
+        Don't have an account? <a href="/register" style="color: var(--primary, #2563eb);">Register here</a>
     </p>
 </div>
 {% endblock %}
