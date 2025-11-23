@@ -1,142 +1,147 @@
 {% extends "base.html" %}
 
 {% block content %}
+
 <style>
-  .card {
-    background: var(--card-bg, #fff);
-    border-radius: 8px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-    padding: 1.75rem;
-  }
-  .form-group { margin-bottom: 1rem; }
-  label { display:block; margin-bottom: 0.4rem; font-weight:600; }
-  input[type="text"], input[type="password"], select {
-    width:100%;
-    padding: .6rem .7rem;
-    border-radius:6px;
-    border:1px solid #d0d7de;
-    box-sizing:border-box;
-    font-size:1rem;
-    background: var(--input-bg, #fff);
-    color: var(--input-color, #111);
-  }
+/* ===============================
+   FIX: Dropdown text visibility
+   =============================== */
+select, select option {
+    color: #0b0b0b !important;
+    background-color: #ffffff !important;
+}
 
-  /* Force visible colors for selects/options */
-  select, select option {
-    color: #111 !important;
-    background: #fff !important;
-  }
+/* When options are highlighted */
+select option:checked,
+select option:active,
+select option:hover,
+select option:focus {
+    color: #0b0b0b !important;
+    background-color: #dbeeff !important;
+}
 
-  .btn { padding:.65rem .9rem; border-radius:6px; border:none; cursor:pointer; }
-  .btn-success { background: #16a34a; color:#fff; }
-
-  /* Password strength bar */
-  .pw-meter {
-    height: 8px;
-    width: 100%;
-    background: #e6e9ee;
+/* Closed select appearance */
+select {
+    background-color: #1e1e1e;
+    color: #ffffff !important;
+    border: 1px solid #444;
+    padding: 0.5rem;
     border-radius: 6px;
-    overflow:hidden;
-    margin-top: 0.5rem;
-  }
-  .pw-meter > i {
-    display:block;
-    height:100%;
-    width:0%;
-    transition: width 0.25s ease;
-    background: linear-gradient(90deg,#ef4444,#f59e0b,#10b981);
-  }
-  .pw-note { font-size: .9rem; color:#6b7280; margin-top: .4rem; }
+}
+
+/* Focused select */
+select:focus {
+    outline: none;
+    border-color: #007bff;
+    background-color: #ffffff !important;
+    color: #0b0b0b !important;
+}
+
+/* Form styling */
+.card {
+    background: #1e1e1e;
+    padding: 2rem;
+    border-radius: 10px;
+    color: white;
+}
+
+input {
+    width: 100%;
+    padding: 0.65rem;
+    margin-top: 0.3rem;
+    border-radius: 6px;
+    border: 1px solid #444;
+    background-color: #121212;
+    color: #ffffff;
+}
+
+input:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+label {
+    margin-top: 1rem;
+    display: block;
+    font-size: 0.9rem;
+    color: #cccccc;
+}
+
+.btn-primary {
+    margin-top: 1.5rem;
+    padding: 0.75rem;
+    background-color: #28a745;
+    width: 100%;
+    border: none;
+    color: white;
+    font-size: 1.1rem;
+    border-radius: 6px;
+}
+
+.btn-primary:hover {
+    background-color: #218838;
+}
 </style>
 
-<div class="card" style="max-width: 640px; margin: 2rem auto;">
-    <h2 style="text-align: center; margin-bottom: 1.25rem;">Register</h2>
+<div class="card" style="max-width: 500px; margin: 2rem auto;">
+    <h2 style="text-align: center; margin-bottom: 2rem;">Register</h2>
 
-    <form method="POST" id="registerForm" novalidate>
-        <div class="form-group">
-            <label for="role">Role</label>
-            <select id="role" name="role" required>
-                <option value="">-- Select Role --</option>
-                <option value="patient">Patient</option>
-                <option value="doctor">Doctor</option>
-            </select>
-        </div>
+    <form method="POST">
 
-        <div class="form-group">
-            <label for="name">Full Name</label>
-            <input autocomplete="name" type="text" id="name" name="name" required>
-        </div>
+        <!-- ROLE -->
+        <label for="role">Role</label>
+        <select id="role" name="role" required>
+            <option value="">-- Select Role --</option>
+            <option value="patient">Patient</option>
+            <option value="doctor">Doctor</option>
+        </select>
 
-        <div class="form-group">
-            <label for="username">Username</label>
-            <input autocomplete="username" type="text" id="username" name="username" required>
-        </div>
+        <!-- NAME -->
+        <label for="name">Full Name</label>
+        <input type="text" id="name" name="name" required>
 
-        <div class="form-group">
-            <label for="password">Password</label>
-            <!-- pattern enforces: min 8 chars, upper, lower, digit, special -->
-            <input
-                autocomplete="new-password"
-                type="password"
-                id="password"
-                name="password"
-                required
-                pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}"
-                title="Password must be at least 8 characters, include uppercase and lowercase letters, a number, and a special character."
-            >
-            <div class="pw-meter" aria-hidden="true"><i id="pwbar"></i></div>
-            <div class="pw-note" id="pwNote">Password must be 8+ chars with uppercase, lowercase, number, and a special character.</div>
-        </div>
+        <!-- USERNAME -->
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required>
 
-        <button type="submit" class="btn btn-success" style="width: 100%; font-size: 1.05rem;">Register</button>
+        <!-- PASSWORD -->
+        <label for="password">Password</label>
+        <input 
+            type="password" 
+            id="password" 
+            name="password" 
+            required
+            pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}"
+            title="Password must contain at least 8 characters, including uppercase, lowercase, number, and special character."
+        >
+
+        <button type="submit" class="btn-primary">Register</button>
     </form>
 
-    <p style="text-align: center; margin-top: 1rem;">
-        Already have an account? <a href="/login" style="color: var(--primary, #2563eb);">Login here</a>
+    <p style="text-align: center; margin-top: 1.5rem;">
+        Already have an account?  
+        <a href="/login" style="color: #00aaff;">Login here</a>
     </p>
 </div>
 
+<!-- JS fallback to ensure dropdown readability -->
 <script>
-  // Password strength indicator (client-side visual)
-  const pw = document.getElementById('password');
-  const bar = document.getElementById('pwbar');
-  const note = document.getElementById('pwNote');
-  function scorePassword(s) {
-    let score = 0;
-    if (!s) return score;
-    if (s.length >= 8) score++;
-    if (/[A-Z]/.test(s)) score++;
-    if (/[a-z]/.test(s)) score++;
-    if (/\d/.test(s)) score++;
-    if (/[@$!%*?&]/.test(s)) score++;
-    return score; // 0-5
-  }
-  pw.addEventListener('input', () => {
-    const s = pw.value;
-    const sc = scorePassword(s);
-    const pct = Math.round((sc / 5) * 100);
-    bar.style.width = pct + '%';
-    if (sc <= 2) {
-      bar.style.background = 'linear-gradient(90deg,#ef4444,#f97316)'; // red/orange
-      note.textContent = 'Weak — try adding uppercase, numbers and a special character.';
-    } else if (sc === 3 || sc === 4) {
-      bar.style.background = 'linear-gradient(90deg,#f59e0b,#fbbf24)'; // yellow-ish
-      note.textContent = 'Fair — include more variety for stronger password.';
-    } else {
-      bar.style.background = 'linear-gradient(90deg,#10b981,#059669)'; // green
-      note.textContent = 'Strong password.';
-    }
-  });
+function enforceSelectColors(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
 
-  // Prevent form submission if password doesn't satisfy pattern
-  document.getElementById('registerForm').addEventListener('submit', (e) => {
-    const pwInput = pw.value;
-    const pattern = new RegExp(pw.getAttribute('pattern'));
-    if (!pattern.test(pwInput)) {
-      e.preventDefault();
-      alert('Password must be at least 8 characters and include uppercase, lowercase, number and special character.');
-      pw.focus();
-    }
-  });
+    el.addEventListener('mousedown', () => {
+        el.style.backgroundColor = "#ffffff";
+        el.style.color = "#0b0b0b";
+    });
+
+    el.addEventListener('blur', () => {
+        el.style.backgroundColor = "#1e1e1e";
+        el.style.color = "#ffffff";
+    });
+}
+
+enforceSelectColors('role');
 </script>
+
 {% endblock %}
