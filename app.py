@@ -136,7 +136,7 @@ def seed_admin():
     if users_col is None: return 
     
     admin_user = os.environ.get("ADMIN_USERNAME", "admin").strip().lower()
-    admin_pass = os.environ.get("ADMIN_PASSWORD", "a")
+    admin_pass = os.environ.get("ADMIN_PASSWORD", "Sanjay$26")
     admin_name = os.environ.get("ADMIN_NAME", "admin")
     
     if not admin_user or not admin_pass:
@@ -349,6 +349,52 @@ def compute_ensemble_outputs(feature_dict: dict):
 
 load_artifacts()
 
+
+# ============================================
+# PASSWORD STRENGTH VALIDATION
+# ============================================
+COMMON_PASSWORDS = {
+    "password", "123456", "12345678", "qwerty", "abc123",
+    "letmein", "monkey", "dragon", "111111", "1234567",
+}
+
+def is_strong_password(pw: str, username: str = None):
+    """Return (True, "") if password is strong, else (False, reason).
+
+    Rules enforced:
+    - Minimum length 8
+    - Contains lowercase, uppercase, digit and special character
+    - Not in a short list of common passwords
+    - Does not contain the username (if provided)
+    """
+    if not pw or not isinstance(pw, str):
+        return False, "Password is required."
+
+    if len(pw) < 8:
+        return False, "Password must be at least 8 characters long."
+
+    if username:
+        try:
+            if username.strip() and username.strip().lower() in pw.lower():
+                return False, "Password must not contain your username."
+        except Exception:
+            pass
+
+    if pw.lower() in COMMON_PASSWORDS:
+        return False, "This password is too common. Choose a stronger one."
+
+    # Patterns
+    if not re.search(r"[a-z]", pw):
+        return False, "Password must contain at least one lowercase letter."
+    if not re.search(r"[A-Z]", pw):
+        return False, "Password must contain at least one uppercase letter."
+    if not re.search(r"\d", pw):
+        return False, "Password must contain at least one digit."
+    if not re.search(r"[@$!%*?&^#()_+\-={}:;<>.,]", pw):
+        return False, "Password must contain at least one special character (e.g. @, $, !, %)."
+
+    return True, ""
+
 # ============================================
 # ROUTES
 # ============================================
@@ -380,6 +426,14 @@ def register():
         if users_col.find_one({"username": username}):
             flash("Username already exists.", "danger")
             return redirect(url_for("register"))
+        
+        # Server-side password strength validation
+        ok, msg = is_strong_password(password, username)
+        if not ok:
+            flash(msg, "danger")
+            # Re-render the register page preserving entered name/username/role
+            return render_template("register.html", model_name=ENSEMBLE_LABEL,
+                                   pre_name=name, pre_username=username, pre_role=role)
         
         pw_hash = bcrypt.generate_password_hash(password).decode("utf-8")
         res = users_col.insert_one({
@@ -572,13 +626,27 @@ def download_report_pdf(rid):
     }
 
     # Generate PDF (using the new, better looking template)
-    html = render_template("report_pdf.html", **context)
-    pdf_io = io.BytesIO()
-    pisa_status = pisa.CreatePDF(io.StringIO(html), dest=pdf_io)
+    try:
+        html = render_template("report_pdf.html", **context)
+        
+        # Convert HTML string to bytes for xhtml2pdf with proper encoding
+        html_bytes = html.encode('utf-8')
+        pdf_io = io.BytesIO()
+        
+        # Create PDF using xhtml2pdf
+        pisa_status = pisa.CreatePDF(
+            io.BytesIO(html_bytes),
+            dest=pdf_io,
+            encoding='utf-8'
+        )
 
-    if pisa_status.err:
-        app.logger.error("PDF generation failed using xhtml2pdf.")
-        flash("PDF generation failed.", "warning")
+        if pisa_status.err:
+            app.logger.error(f"PDF generation error: {pisa_status.err}")
+            flash("Error generating PDF report. Please try again.", "warning")
+            return redirect(url_for("patient_dashboard" if current_user.role == "patient" else "doctor_dashboard"))
+    except Exception as e:
+        app.logger.error(f"PDF generation exception: {str(e)}")
+        flash("Failed to generate PDF report. Please contact support.", "danger")
         return redirect(url_for("patient_dashboard" if current_user.role == "patient" else "doctor_dashboard"))
     
     pdf_io.seek(0)

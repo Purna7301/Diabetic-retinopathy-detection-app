@@ -107,21 +107,22 @@ label {
 
         <label style="margin-bottom: 0.5rem;">Role</label>
         <div class="segment-control">
-            <input type="radio" id="role-patient" name="role" value="patient" required>
+            <input aria-label="Role patient" type="radio" id="role-patient" name="role" value="patient" required {% if pre_role == 'patient' %}checked{% endif %}>
             <label for="role-patient">Patient</label>
 
-            <input type="radio" id="role-doctor" name="role" value="doctor" required>
+            <input aria-label="Role doctor" type="radio" id="role-doctor" name="role" value="doctor" required {% if pre_role == 'doctor' %}checked{% endif %}>
             <label for="role-doctor">Doctor</label>
         </div>
 
-        <label for="name">Full Name</label>
-        <input type="text" id="name" name="name" required>
+    <label for="name">Full Name</label>
+    <input aria-label="Full name" type="text" id="name" name="name" required value="{{ pre_name|default('') }}">
 
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" required>
+    <label for="username">Username</label>
+    <input aria-label="Username" type="text" id="username" name="username" required value="{{ pre_username|default('') }}">
 
         <label for="password">Password</label>
         <input 
+            aria-label="Password"
             type="password" 
             id="password" 
             name="password" 
@@ -130,7 +131,14 @@ label {
             title="Password must contain at least 8 characters, including uppercase, lowercase, number, and special character."
         >
 
-        <button type="submit" class="btn-primary">Register</button>
+        <div id="pw-strength" style="margin-top:0.5rem;">
+            <div id="strength-bar" style="height:8px;background:#e5e7eb;border-radius:6px;overflow:hidden;">
+                <div id="strength-fill" style="height:100%;width:0%;background:#f87171;transition:width 150ms ease"></div>
+            </div>
+            <small id="strength-text" style="display:block;margin-top:0.35rem;color:#cccccc;">Enter a strong password</small>
+        </div>
+
+        <button type="submit" id="register-submit" class="btn-primary" disabled>Register</button>
     </form>
 
     <p style="text-align: center; margin-top: 1.5rem;">
@@ -138,5 +146,59 @@ label {
         <a href="/login" style="color: #00aaff;">Login here</a>
     </p>
 </div>
+
+<script>
+// Client-side password strength checking to improve UX. Server still enforces rules.
+(() => {
+    const pw = document.getElementById('password');
+    const uname = document.getElementById('username');
+    const submit = document.getElementById('register-submit');
+    const fill = document.getElementById('strength-fill');
+    const text = document.getElementById('strength-text');
+
+    const common = new Set(["password","123456","12345678","qwerty","abc123","letmein","monkey","dragon","111111","1234567"]);
+
+    function evaluate(pwVal, usernameVal) {
+        if (!pwVal) return {score: 0, strong: false, msg: 'Enter a password'};
+
+        let score = 0;
+        if (pwVal.length >= 8) score += 1;
+        if (pwVal.length >= 12) score += 1;
+        if (/[a-z]/.test(pwVal)) score += 1;
+        if (/[A-Z]/.test(pwVal)) score += 1;
+        if (/\d/.test(pwVal)) score += 1;
+        if (/[@$!%*?&^#()_+\-={}:;<>.,]/.test(pwVal)) score += 1;
+        if (usernameVal && usernameVal.trim() && pwVal.toLowerCase().includes(usernameVal.trim().toLowerCase())) {
+            return {score: 0, strong: false, msg: 'Password must not contain username.'};
+        }
+        if (common.has(pwVal.toLowerCase())) {
+            return {score: 0, strong: false, msg: 'Password is too common.'};
+        }
+
+        const pct = Math.min(100, Math.round((score / 6) * 100));
+        const strong = (score >= 5);
+        let msg = strong ? 'Strong password' : 'Weak password — include uppercase, lowercase, number and special char.';
+        if (pwVal.length < 8) msg = 'Password must be at least 8 characters.';
+
+        return {score: pct, strong: strong, msg: msg};
+    }
+
+    function refresh() {
+        const result = evaluate(pw.value || '', uname.value || '');
+        fill.style.width = result.score + '%';
+        if (result.score < 40) fill.style.background = '#f87171';
+        else if (result.score < 75) fill.style.background = '#f59e0b';
+        else fill.style.background = '#10b981';
+        text.textContent = result.msg;
+        submit.disabled = !result.strong;
+    }
+
+    if (pw) pw.addEventListener('input', refresh);
+    if (uname) uname.addEventListener('input', refresh);
+
+    // Run on load to handle pre-filled username when server re-renders the form
+    window.addEventListener('load', function(){ setTimeout(refresh, 50); });
+})();
+</script>
 
 {% endblock %}

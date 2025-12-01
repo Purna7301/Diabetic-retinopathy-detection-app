@@ -2,100 +2,131 @@
 
 {% block content %}
 <style>
-  .card {
-    background: var(--card-bg, #fff);
-    border-radius: 8px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
-    padding: 1.25rem;
-  }
-  .form-group { margin-bottom: 1rem; }
-  label { display:block; margin-bottom: 0.35rem; font-weight:600; }
-  input[type="number"], select {
-    width:100%;
-    padding: .55rem .7rem;
-    border-radius:6px;
-    border:1px solid #d0d7de;
-    box-sizing:border-box;
-    font-size:1rem;
-    background: var(--input-bg, #fff);
-    color: var(--input-color, #111);
-  }
+	:root{
+		--card-bg: #ffffff;
+		--input-bg: #ffffff;
+		--input-color: #111827;
+		--primary: #2563eb;
+		--muted: #6b7280;
+	}
 
-  /* Force visible text for doctor select and options */
-  select, select option {
-    color: #111 !important;
-    background: #fff !important;
-  }
+	.card{
+		background: var(--card-bg);
+		border-radius: 10px;
+		box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+		padding: 1.5rem;
+		color: var(--input-color);
+	}
 
-  .btn { padding:.65rem .9rem; border-radius:6px; border:none; cursor:pointer; }
-  .btn-primary { background: #2563eb; color:#fff; }
-  h3 { margin-top: 1.25rem; margin-bottom: .6rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+	.form-group{ margin-bottom: 1rem; }
+	label{ display:block; margin-bottom:0.35rem; font-weight:600; color:var(--muted); }
+
+	input[type="number"], select{
+		width:100%;
+		padding:.6rem .75rem;
+		border-radius:8px;
+		border:1px solid #e5e7eb;
+		box-sizing:border-box;
+		background:var(--input-bg);
+		color:var(--input-color);
+		font-size:1rem;
+	}
+
+	/* Ensure select visible in dark/light themes. Many browsers limit styling of option,
+		 but applying explicit colors with !important improves visibility where supported. */
+	select.doctor-select,
+	select.doctor-select option{
+		color: #111 !important;
+		background: #fff !important;
+	}
+
+	.grid{ display:grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap:1rem; }
+
+	.btn { padding:.65rem .9rem; border-radius:8px; border:none; cursor:pointer; }
+	.btn-primary{ background:var(--primary); color:#fff; font-weight:600; }
+
+	.hint{ font-size:0.9rem; color:var(--muted); margin-top:0.35rem; }
+
+	@media (prefers-color-scheme: dark){
+		:root{
+			--card-bg: #111827;
+			--input-bg: #0b1220;
+			--input-color: #e6eef8;
+			--primary: #2563eb;
+			--muted: #9aa4b2;
+		}
+		/* Keep options readable when possible */
+		select.doctor-select, select.doctor-select option{ color: #111 !important; background: #fff !important; }
+	}
+
 </style>
 
-<div class="card" style="max-width: 980px; margin: 1.5rem auto;">
-    <h2 style="text-align: center; margin-bottom: 1rem;">New Assessment</h2>
+<div class="card" style="max-width:980px;margin:1.5rem auto;">
+	<h2 style="text-align:center;margin-bottom:1rem;">New Assessment</h2>
 
-    <form method="POST" novalidate>
-        <h3 style="margin: 1rem 0 0.5rem; color: var(--primary, #2563eb);">Image Features</h3>
+	<form method="POST" novalidate>
+		<h3 style="margin:1rem 0 0.5rem;color:var(--primary);">Image Features</h3>
 
-        <div class="grid">
-            <div class="form-group">
-                <label for="exudates_count">Exudates Count</label>
-                <input type="number" id="exudates_count" name="exudates_count" min="0" placeholder="e.g., 5" required>
-            </div>
+		<div class="grid">
+			<div class="form-group">
+				<label for="exudates_count">Exudates Count</label>
+				<input aria-label="Exudates Count" type="number" id="exudates_count" name="exudates_count" min="0" max="10" placeholder="e.g: 0 - 10" required>
+			</div>
 
-            <div class="form-group">
-                <label for="hemorrhages_count">Hemorrhages Count</label>
-                <input type="number" id="hemorrhages_count" name="hemorrhages_count" min="0" placeholder="e.g., 2" required>
-            </div>
+			<div class="form-group">
+				<label for="hemorrhages_count">Hemorrhages Count</label>
+				<input aria-label="Hemorrhages Count" type="number" id="hemorrhages_count" name="hemorrhages_count" min="0" max="10" placeholder="e.g: 0 - 5" required>
+			</div>
 
-            <div class="form-group">
-                <label for="microaneurysms_count">Microaneurysms Count</label>
-                <input type="number" id="microaneurysms_count" name="microaneurysms_count" min="0" placeholder="e.g., 10" required>
-            </div>
+			<div class="form-group">
+				<label for="microaneurysms_count">Microaneurysms Count</label>
+				<input aria-label="Microaneurysms Count" type="number" id="microaneurysms_count" name="microaneurysms_count" min="0" max="10" placeholder="e.g: 0 - 10" required>
+			</div>
 
-            <div class="form-group">
-                <label for="vessel_tortuosity">Vessel Tortuosity</label>
-                <input type="number" id="vessel_tortuosity" name="vessel_tortuosity" step="0.01" min="0" placeholder="e.g., 0.85" required>
-            </div>
+			<div class="form-group">
+				<label for="vessel_tortuosity">Vessel Tortuosity</label>
+				<input aria-label="Vessel Tortuosity" type="number" id="vessel_tortuosity" name="vessel_tortuosity" step="0.01" min="0" max="10" placeholder="e.g: 0 - 7" required>
+			</div>
 
-            <div class="form-group">
-                <label for="macular_thickness">Macular Thickness</label>
-                <input type="number" id="macular_thickness" name="macular_thickness" step="0.01" min="0" placeholder="e.g., 250" required>
-            </div>
-        </div>
+			<div class="form-group">
+				<label for="macular_thickness">Macular Thickness</label>
+				<input aria-label="Macular Thickness" type="number" id="macular_thickness" name="macular_thickness" step="0.01" min="200" max="400" placeholder="e.g: 200 - 400" required>
+			</div>
+		</div>
 
-        <h3 style="margin: 1.25rem 0 0.5rem; color: var(--primary, #2563eb);">Clinical Features</h3>
+		<h3 style="margin:1.25rem 0 0.5rem;color:var(--primary);">Clinical Features</h3>
 
-        <div class="grid">
-            <div class="form-group">
-                <label for="fasting_glucose">Fasting Glucose (mg/dL)</label>
-                <input type="number" id="fasting_glucose" name="fasting_glucose" step="0.01" min="0" placeholder="e.g., 120" required>
-            </div>
+		<div class="grid">
+			<div class="form-group">
+				<label for="fasting_glucose">Fasting Glucose (mg/dL)</label>
+				<input aria-label="Fasting Glucose" type="number" id="fasting_glucose" name="fasting_glucose" step="0.01"min="70" max="300" placeholder="e.g: 70 - 300" required>
+			</div>
 
-            <div class="form-group">
-                <label for="hba1c">HbA1c (%)</label>
-                <input type="number" id="hba1c" name="hba1c" step="0.01" min="0" placeholder="e.g., 6.5" required>
-            </div>
+			<div class="form-group">
+				<label for="hba1c">HbA1c (%)</label>
+				<input aria-label="HbA1c" type="number" id="hba1c" name="hba1c" step="0.01" min="3" max="12" placeholder="e.g: 3 - 12" required>
+			</div>
 
-            <div class="form-group">
-                <label for="diabetes_duration">Diabetes Duration (years)</label>
-                <input type="number" id="diabetes_duration" name="diabetes_duration" step="0.01" min="0" placeholder="e.g., 5" required>
-            </div>
-        </div>
+			<div class="form-group">
+				<label for="diabetes_duration">Diabetes Duration (years)</label>
+				<input aria-label="Diabetes Duration" type="number" id="diabetes_duration" name="diabetes_duration" step="0.01" min="0" max="60" placeholder="e.g: 0 - 60" required>
+			</div>
+		</div>
 
-        <div class="form-group" style="margin-top: 1.25rem;">
-            <label for="doctor_id">Assign to Doctor (Optional)</label>
-            <select id="doctor_id" name="doctor_id">
-                <option value="">-- Self-Assessment --</option>
-                {% for doc in doctors %}
-                    <option value="{{ doc._id }}">{{ doc.name }} ({{ doc.username }})</option>
-                {% endfor %}
-            </select>
-        </div>
+		<div class="form-group" style="margin-top:1.25rem;">
+			<label for="doctor_id">Assign to Doctor (Optional)</label>
+			<select id="doctor_id" name="doctor_id" class="doctor-select" aria-label="Assign to Doctor">
+				<option disabled selected value="">-- Select doctor (or leave empty for self-assessment) --</option>
+				{% for doc in doctors %}
+					<option value="{{ doc._id }}">{{ doc.name }} ({{ doc.username }})</option>
+				{% endfor %}
+			</select>
+			<div class="hint">If you choose a doctor, they'll be notified and can review the assessment.</div>
+		</div>
 
-        <button type="submit" class="btn btn-primary" style="width: 100%; font-size: 1.05rem; margin-top: 1rem;">Submit Assessment</button>
-    </form>
+		<button type="submit" class="btn btn-primary" style="width:100%;font-size:1.05rem;margin-top:1rem;">Submit Assessment</button>
+	</form>
 </div>
+
 {% endblock %}
+*** End Patch
