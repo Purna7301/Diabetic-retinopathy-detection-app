@@ -15,62 +15,27 @@ body { font-family: Arial, sans-serif; font-size: 11px; margin:0; color:#1f2937;
     padding:18px;
 }
 .header-title { font-size:18px; font-weight:bold; }
-.header-sub { font-size:10px; color:#cbd5e1; }
-.header-meta { margin-top:10px; font-size:10px; }
 
 /* SECTION */
 .section-title {
     background:#1e3a5f;
     color:#fff;
-    padding:6px 10px;
-    font-size:11px;
+    padding:6px;
     margin:15px;
-    border-radius:4px;
 }
 
 /* TABLE */
 .table-box {
     margin:0 15px 15px 15px;
     border:1px solid #e5e7eb;
-    border-radius:6px;
 }
 table { width:100%; border-collapse:collapse; }
-th { background:#f1f5f9; padding:6px; font-size:10px; }
-td { padding:6px; border-bottom:1px solid #e5e7eb; }
-
-/* BADGES */
-.badge-img { background:#0369a1; color:#fff; padding:2px 6px; border-radius:8px; font-size:9px; }
-.badge-clinical { background:#7c3aed; color:#fff; padding:2px 6px; border-radius:8px; font-size:9px; }
+td, th { padding:6px; border-bottom:1px solid #e5e7eb; }
 
 /* STATUS */
 .green { color:#16a34a; font-weight:bold; }
 .red { color:#dc2626; font-weight:bold; }
 .orange { color:#d97706; font-weight:bold; }
-
-/* ALERT */
-.alert-box {
-    margin:15px;
-    padding:14px;
-    border-radius:10px;
-    border:1px solid #fca5a5;
-    background:#fff5f5;
-}
-.alert-title {
-    color:#b91c1c;
-    font-weight:bold;
-    margin-bottom:10px;
-}
-.alert-item {
-    background:#fff;
-    border:1px solid #fecaca;
-    border-radius:8px;
-    padding:10px;
-    margin-bottom:8px;
-}
-
-/* MODEL BAR */
-.bar-bg { width:100px; height:6px; background:#e5e7eb; }
-.bar-fill { height:6px; background:#2563eb; }
 
 /* FOOTER */
 .footer {
@@ -90,8 +55,6 @@ td { padding:6px; border-bottom:1px solid #e5e7eb; }
 
 <div class="header">
     <div class="header-title">DR ASSESSMENT REPORT</div>
-    <div class="header-sub">AI-Powered Diabetic Retinopathy Screening System</div>
-]
 </div>
 
 <!-- ================= RISK CARD ================= -->
@@ -99,56 +62,49 @@ td { padding:6px; border-bottom:1px solid #e5e7eb; }
 {% set prob = probability * 100 %}
 
 {% if prob < 37.1 %}
-{% set label = "NO DR" %}
-{% set color = "#16a34a" %}
-{% set text = "No signs of diabetic retinopathy detected. Maintain healthy lifestyle and regular checkups." %}
+{% set label="NO DR" %}
+{% set color="#16a34a" %}
 {% elif prob < 55 %}
-{% set label = "LOW RISK" %}
-{% set color = "#2563eb" %}
-{% set text = "Low risk detected. Maintain glucose control and schedule periodic eye examinations." %}
+{% set label="LOW RISK" %}
+{% set color="#2563eb" %}
 {% elif prob < 70 %}
-{% set label = "MODERATE RISK" %}
-{% set color = "#d97706" %}
-{% set text = "Moderate risk detected. Clinical monitoring and ophthalmologist consultation recommended within 3–6 months." %}
+{% set label="MODERATE RISK" %}
+{% set color="#d97706" %}
 {% else %}
-{% set label = "CRITICAL" %}
-{% set color = "#dc2626" %}
-{% set text = "Critical risk detected. Immediate medical attention and specialist consultation required." %}
+{% set label="CRITICAL" %}
+{% set color="#dc2626" %}
 {% endif %}
 
-<div style="margin:15px;border:1px solid {{ color }};border-radius:6px;">
-<table width="100%">
+<table width="100%" style="margin:15px;border:2px solid {{ color }};">
 <tr>
 
-<td width="120px" style="border-right:1px solid {{ color }};text-align:center;padding:15px;">
-<div style="font-size:32px;font-weight:bold;color:{{ color }};">
+<td width="140px" align="center" style="border-right:2px solid {{ color }};padding:20px;">
+<div style="font-size:30px;font-weight:bold;color:{{ color }};">
 {{ "%.1f"|format(prob) }}
 </div>
 <div>% Risk</div>
 </td>
 
-<td style="padding:12px;">
+<td style="padding:15px;">
 
-<div style="background:{{ color }};color:white;padding:4px 10px;font-size:10px;font-weight:bold;display:inline-block;margin-bottom:6px;">
+<div style="background:{{ color }};color:#fff;padding:5px 10px;font-size:10px;font-weight:bold;display:inline-block;">
 {{ label }}
 </div>
 
-<div style="height:10px;background:#e5e7eb;margin-bottom:8px;">
-<div style="height:10px;width:{{ "%.1f"|format(prob) }}%;background:{{ color }};"></div>
-</div>
-
-<div style="font-weight:bold;">
+<div style="margin-top:8px;font-weight:bold;">
 {{ label }} – Monitoring Required
 </div>
 
-<div style="margin-top:4px;">
-{{ text }}
+<div style="margin-top:10px;">
+<div style="height:8px;background:#e5e7eb;">
+<div style="height:8px;width:{{ "%.1f"|format(prob) }}%;background:{{ color }};"></div>
+</div>
 </div>
 
 </td>
+
 </tr>
 </table>
-</div>
 
 <!-- ================= HEALTHY ================= -->
 
@@ -170,46 +126,68 @@ td { padding:6px; border-bottom:1px solid #e5e7eb; }
 {% endif %}
 {% endfor %}
 
-<!-- ================= ALERTS ================= -->
+<!-- ================= ALERT (FINAL CLEAN) ================= -->
 
 {% if issues|length > 0 %}
 
-<div class="alert-box">
-<div class="alert-title">⚠ {{ issues|length }} Feature(s) Outside Healthy Range</div>
+<table width="100%" style="margin:15px;">
+<tr>
+<td style="background:#fff5f5;border:1px solid #fca5a5;padding:12px;">
+
+<div style="color:#b91c1c;font-weight:bold;margin-bottom:10px;">
+■ {{ issues|length }} Feature(s) Outside Healthy Range
+</div>
 
 {% for k in issues %}
 
-<div class="alert-item">
+<table width="100%" style="background:#ffffff;border:1px solid #fecaca;margin-bottom:8px;">
+<tr>
+<td style="padding:10px;">
 
 <b>{{ healthy[k].label }}</b> — <span style="color:#dc2626;font-weight:bold;">
 {{ features[k] }} </span> <span style="color:#6b7280;">
 (Healthy: {{ healthy[k].min }}–{{ healthy[k].max }}) </span>
 
-<div style="font-size:10px;color:#92400e;margin-top:4px;font-style:italic;">
+<div style="margin-top:5px;font-size:10px;color:#92400e;font-style:italic;">
 
 {% if k=="hemorrhages_count" %}
-⚡ Retinal hemorrhages found — urgent specialist evaluation advised.
+⚡ Retinal hemorrhages found — a direct indicator of vascular damage. Urgent specialist evaluation advised.
+
 {% elif k=="hba1c" %}
-⚡ HbA1c above target — intensify diabetes management.
+⚡ HbA1c above target range — poor long-term glycemic control.
+
 {% elif k=="fasting_glucose" %}
-⚡ Elevated glucose — review diet and medication.
+⚡ Elevated fasting glucose — indicative of hyperglycemia.
+
 {% elif k=="exudates_count" %}
 ⚡ Lipid leakage detected — ophthalmologist review required.
+
 {% elif k=="microaneurysms_count" %}
-⚡ Early retinal damage — follow-up required.
+⚡ Microaneurysms detected.
+
 {% elif k=="vessel_tortuosity" %}
-⚡ Vascular abnormality — monitor BP & sugar.
+⚡ Vessel abnormality detected.
+
 {% elif k=="macular_thickness" %}
-⚡ Possible macular edema — immediate consultation.
+⚡ Macular thickness abnormal.
+
 {% elif k=="diabetes_duration" %}
-⚡ Long diabetes duration — regular screening essential.
+⚡ Long diabetes duration.
+
 {% endif %}
 
 </div>
 
-</div>
+</td>
+</tr>
+</table>
+
 {% endfor %}
-</div>
+
+</td>
+</tr>
+</table>
+
 {% endif %}
 
 <!-- ================= PATIENT ================= -->
@@ -226,45 +204,28 @@ td { padding:6px; border-bottom:1px solid #e5e7eb; }
 
 <!-- ================= FEATURES ================= -->
 
-<div class="section-title">CLINICAL & IMAGING FEATURES</div>
+<div class="section-title">CLINICAL FEATURES</div>
 <div class="table-box">
 <table>
 <tr>
-<th>Feature</th>
-<th>Category</th>
-<th>Value</th>
-<th>Range</th>
-<th>Status</th>
+<th>Feature</th><th>Value</th><th>Range</th><th>Status</th>
 </tr>
-
-{% set img=["exudates_count","hemorrhages_count","microaneurysms_count","vessel_tortuosity","macular_thickness"] %}
 
 {% for k,v in features.items() %}
 
 <tr>
 <td>{{ healthy[k].label }}</td>
-
-<td>
-{% if k in img %}
-<span class="badge-img">IMAGING</span>
-{% else %}
-<span class="badge-clinical">CLINICAL</span>
-{% endif %}
-</td>
-
 <td>{{ v }}</td>
-<td>{{ healthy[k].min }} – {{ healthy[k].max }}</td>
-
+<td>{{ healthy[k].min }}–{{ healthy[k].max }}</td>
 <td>
 {% if v > healthy[k].max %}
-<span class="red">Above</span>
+<span class="red">High</span>
 {% elif v < healthy[k].min %}
-<span class="orange">Below</span>
+<span class="orange">Low</span>
 {% else %}
 <span class="green">Normal</span>
 {% endif %}
 </td>
-
 </tr>
 {% endfor %}
 </table>
@@ -272,36 +233,16 @@ td { padding:6px; border-bottom:1px solid #e5e7eb; }
 
 <!-- ================= MODELS ================= -->
 
-<div class="section-title">INDIVIDUAL MODEL PROBABILITIES</div>
+<div class="section-title">MODEL ANALYSIS</div>
 <div class="table-box">
 <table>
-<tr>
-<th>Model</th>
-<th>Probability</th>
-<th>Visual</th>
-<th>Status</th>
-</tr>
+<tr><th>Model</th><th>Probability</th></tr>
 
 {% for pm in per_model_details %}
-{% set p=pm.probability*100 %}
 
 <tr>
 <td>{{ pm.name }}</td>
-<td>{{ "%.1f"|format(p) }}%</td>
-
-<td>
-<div class="bar-bg">
-<div class="bar-fill" style="width:{{ "%.1f"|format(p) }}%"></div>
-</div>
-</td>
-
-<td>
-{% if p < 37.1 %}No DR
-{% elif p < 55 %}Low
-{% elif p < 70 %}Moderate
-{% else %}Critical
-{% endif %}
-</td>
+<td>{{ "%.1f"|format(pm.probability*100) }}%</td>
 </tr>
 {% endfor %}
 </table>
@@ -310,7 +251,7 @@ td { padding:6px; border-bottom:1px solid #e5e7eb; }
 <!-- FOOTER -->
 
 <div class="footer">
-Diabetic Retinopathy AI Screening System | Confidential Report
+Confidential Medical Report
 </div>
 
 </body>
