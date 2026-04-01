@@ -57,6 +57,18 @@ td, th { padding:6px; border-bottom:1px solid #e5e7eb; }
     <div class="header-title">DR ASSESSMENT REPORT</div>
 </div>
 
+<!-- ================= PATIENT ================= -->
+
+<div class="section-title">PATIENT INFORMATION</div>
+<div class="table-box">
+<table>
+<tr><td>Name</td><td>{{ patient_name }}</td></tr>
+<tr><td>Username</td><td>{{ patient_username }}</td></tr>
+<tr><td>Date</td><td>{{ created_at }}</td></tr>
+<tr><td>Doctor</td><td>{{ doctor_name }}</td></tr>
+</table>
+</div>
+
 <!-- ================= RISK CARD ================= -->
 
 {% set prob = probability * 100 %}
@@ -190,17 +202,6 @@ td, th { padding:6px; border-bottom:1px solid #e5e7eb; }
 
 {% endif %}
 
-<!-- ================= PATIENT ================= -->
-
-<div class="section-title">PATIENT INFORMATION</div>
-<div class="table-box">
-<table>
-<tr><td>Name</td><td>{{ patient_name }}</td></tr>
-<tr><td>Username</td><td>{{ patient_username }}</td></tr>
-<tr><td>Date</td><td>{{ created_at }}</td></tr>
-<tr><td>Doctor</td><td>{{ doctor_name }}</td></tr>
-</table>
-</div>
 
 <!-- ================= FEATURES ================= -->
 
